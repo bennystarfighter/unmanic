@@ -49,7 +49,10 @@ def version():
         git_version_info = get_git_version_info()
         return git_version_info['short']
     else:
-        return str(version_info.__version__)
+        fallback_version = str(version_info.__version__)
+        if fallback_version.upper() == 'UNKNOWN':
+            return '0.0.0'
+        return fallback_version
 
 
 def full_version():
@@ -57,7 +60,10 @@ def full_version():
         git_version_info = get_git_version_info()
         return git_version_info['long']
     else:
-        return str(version_info.__version__)
+        fallback_version = str(version_info.__version__)
+        if fallback_version.upper() == 'UNKNOWN':
+            return '0.0.0+unknown'
+        return fallback_version
 
 
 def description():

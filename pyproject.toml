@@ -1,2 +1,90 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unmanic"
+dynamic = ["version"]
+description = "A simple tool for optimising your video library to a single format"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Josh.5", email = "jsunnex@gmail.com" },
+]
+maintainers = [
+    { name = "Josh.5", email = "jsunnex@gmail.com" },
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Unix",
+    "Topic :: Multimedia :: Video :: Conversion",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = [
+    "schedule==1.2.2",
+    "tornado==6.3.3",
+    "marshmallow~=3.22",
+    "peewee>=3.14.4",
+    "peewee_migrate==1.13.0",
+    "psutil~=6.0.0",
+    "requests>=2.28.2",
+    "requests_toolbelt>=0.9.1",
+    "py-cpuinfo>=7.0.0",
+    "JSON-log-formatter~=0.5.2",
+    "xxhash>=3.6.0",
+    "watchdog>=2.1.1",
+    "inquirer>=2.7.0",
+    "swagger-ui-py",
+]
+
+[project.optional-dependencies]
+dev = [
+    "flake8>=5.0.4",
+    "pycodestyle>=2.9.1",
+    "pytest>=7.4.3",
+    "wheel>=0.42.0",
+    "setuptools>=68.0.0",
+    "build>=0.10.0",
+    "yappi>=1.6.0",
+    "apispec>=6.3.1",
+    "apispec_webframeworks>=0.5.2",
+    "pyyaml>=6.0.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/Josh5/unmanic"
+
+[project.scripts]
+unmanic = "unmanic.service:main"
+
+[tool.setuptools.packages.find]
+include = ["unmanic*"]
+
+[tool.setuptools.package-data]
+"*" = ["*"]
+
 [tool.black]
 line-length = 120
+
+[dependency-groups]
+dev = [
+    "flake8>=5.0.4",
+    "pycodestyle>=2.9.1",
+    "pytest>=7.4.3",
+    "wheel>=0.42.0",
+    "setuptools>=68.0.0",
+    "build>=0.10.0",
+    "yappi>=1.6.0",
+    "apispec>=6.3.1",
+    "apispec_webframeworks>=0.5.2",
+    "pyyaml>=6.0.1",
+]

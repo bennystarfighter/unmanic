@@ -41,18 +41,15 @@ jobs:
         with:
           python-version: "3.8"
 
-      # Restore the python cache if it exists
-      - name: Restore python cache
-        uses: actions/cache@v4
+      # Install UV
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          enable-cache: true
 
       # Restore the apt cache if it exists
       # TODO: Fix this cache. Its not really working at all. It would be nice to have tho.
-      - name: Restore python cache
+      - name: Restore apt cache
         id: apt-cache
         uses: actions/cache@v4
         with:
@@ -75,10 +72,7 @@ jobs:
       # Install python dependencies for testing unmanic
       - name: Install python dependencies
         if: success()
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        run: uv sync --group dev
 
       # Run pytest unit tests
       - name: Test with pytest
@@ -86,7 +80,7 @@ jobs:
         run: |
           echo "Using test videos:"
           ls -l ./tests/support_/videos/*/
-          pytest -m integrationtest
+          uv run pytest -m integrationtest
 
   py_build:
     name: Build Python package
@@ -113,21 +107,15 @@ jobs:
         with:
           python-version: "3.10"
 
-      # Restore the python cache if it exists
-      - name: Restore python cache
-        uses: actions/cache@v4
+      # Install UV
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          enable-cache: true
 
       # Install python dependencies for building unmanic
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        run: uv sync --group dev
 
       # Setup node environment for building unmanic's webui
       - uses: actions/setup-node@v4
@@ -139,19 +127,18 @@ jobs:
         id: build_py
         run: |
           echo "Short version:"
-          python ./setup.py  --quiet --version
+          uv run python ./setup.py  --quiet --version
           echo "Long version:"
-          python ./setup.py  --quiet fullversion
-          REPO_URL="https://github.com/${GITHUB_REPOSITORY}/raw/${GITHUB_REF#refs/heads}/"
+          uv run python ./setup.py  --quiet fullversion
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}/raw/${GITHUB_REF#refs/heads/}"
           sed -i "s|(./docs/|(${REPO_URL:?}/docs/|g" README.md
-          python -m build --no-isolation --skip-dependency-check --wheel
-          python -m build --no-isolation --skip-dependency-check --sdist
+          uv build --no-sources
 
       # Read the python package distribution data (save version to file)
       - name: Read python package distribution data
         id: py_build_data
         run: |
-          PY_VERSION=$(python ./setup.py  --quiet --version)
+          PY_VERSION=$(uv run python ./setup.py  --quiet --version)
           PY_BDIST_PATH=$(ls  dist/*.whl | head -n1)
           PY_BDIST_FILE=${PY_BDIST_PATH#*/}
           echo "py_version=${PY_VERSION}" >> $GITHUB_OUTPUT
@@ -274,7 +261,7 @@ jobs:
           echo "docker_push:${DOCKER_PUSH:?}"
           echo "docker_push=${DOCKER_PUSH:?}" >> $GITHUB_OUTPUT
 
-          echo "docker_build_date:${BUILD_DATE:?}" 
+          echo "docker_build_date:${BUILD_DATE:?}"
           echo "docker_build_date=${BUILD_DATE:?}" >> $GITHUB_OUTPUT
 
           echo "docker_platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT

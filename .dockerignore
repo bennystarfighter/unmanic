@@ -4,8 +4,6 @@
 .gitignore
 .github
 .gitattributes
-README.md
-
 
 dev_environment
 config

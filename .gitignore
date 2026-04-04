@@ -19,3 +19,6 @@ venv/**
 build/**
 dist/**
 unmanic.egg-info/**
+
+# UV virtual environment (lock file should be committed)
+.venv/

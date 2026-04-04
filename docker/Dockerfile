@@ -1,331 +1,196 @@
-FROM ubuntu:24.04
+# =============================================================================
+# Stage 1 — system-base
+# All runtime APT packages: drivers, FFmpeg, Node.js, Python runtime
+# =============================================================================
+FROM ubuntu:24.04 AS system-base
 LABEL maintainer="Josh.5 <jsunnex@gmail.com>"
 
-# Env variables
+ARG DEBIAN_FRONTEND=noninteractive
+ARG JELLYFIN_FFMPEG_VERSION="7"
+ARG BTBN_FFMPEG_RELEASE="latest"
+ARG BTBN_FFMPEG_VERSION="8.1"
+
 ENV \
     LIBVA_DRIVERS_PATH="/usr/lib/x86_64-linux-gnu/dri" \
     NVIDIA_DRIVER_CAPABILITIES="compute,video,utility" \
     NVIDIA_VISIBLE_DEVICES="all"
 
+# Base runtime libraries and tools.
+# va-driver-all is a meta-package covering all available VAAPI drivers
+# (i965-va-driver, intel-media-va-driver, mesa-va-drivers, libdrm2, etc.)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        gosu \
+        grc \
+        libexpat1 \
+        libglib2.0-0 \
+        libgomp1 \
+        libharfbuzz0b \
+        libimage-exiftool-perl \
+        libmediainfo0v5 \
+        libv4l-0 \
+        libvulkan1 \
+        libx11-6 \
+        libxcb1 \
+        libxext6 \
+        libxml2 \
+        mesa-vulkan-drivers \
+        python3 \
+        python3-venv \
+        sqlite3 \
+        va-driver-all \
+        vainfo \
+        wget \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install the runtime dependencies
+# x86 only: Intel GPU drivers and media libraries.
+#   intel-media-va-driver-non-free  primary VAAPI driver for Intel graphics
+#   libigdgmm12                     Intel Graphics Memory Management Library
+#   libmfx1 / libmfxgen1            Intel Media SDK runtime (Quick Sync Video)
+#   libva-drm2 / libva2             VAAPI/DRM interface libraries
+#   libvpl2                         successor to Intel Media SDK
 RUN \
-    echo "**** Configure APT ****" \
-        && export DEBIAN_FRONTEND=noninteractive \
-    && \
-    echo "**** Install build dependencies requirements ****" \
+    if uname -m | grep -q x86; then \
+        wget -qO - https://repositories.intel.com/gpu/intel-graphics.key \
+            | gpg --dearmor -o /usr/share/keyrings/intel-graphics.gpg \
+        && echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] \
+                https://repositories.intel.com/gpu/ubuntu jammy client" \
+            > /etc/apt/sources.list.d/intel-gpu-jammy.list \
         && apt-get update \
         && apt-get install -y \
-            autoconf \
-            automake \
-            build-essential \
-            ca-certificates \
-            cmake \
-            curl \
-            g++ \
-            git \
-            gnupg \
-            gosu \
-            gzip \
-            libaom-dev \
-            libass-dev \
-            libdav1d-dev \
-            libdrm-dev \
-            libfdk-aac-dev \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libmp3lame-dev \
-            libnuma-dev \
-            libopus-dev \
+            intel-media-va-driver-non-free \
+            libigdgmm12 \
+            libmfx1 \
+            libmfxgen1 \
+            libva-drm2 \
+            libva2 \
+            libvpl2 \
+        && rm -rf /var/lib/apt/lists/* ; \
+    fi
+
+# Jellyfin FFmpeg: add repository
+RUN . /etc/os-release \
+    && JELLYFIN_CODENAME="${VERSION_CODENAME:-noble}" \
+    && wget -qO - https://repo.jellyfin.org/jellyfin_team.gpg.key \
+        | gpg --dearmor -o /usr/share/keyrings/jellyfin_team.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/jellyfin_team.gpg] \
+            https://repo.jellyfin.org/ubuntu ${JELLYFIN_CODENAME} main" \
+        > /etc/apt/sources.list.d/jellyfin.list
+
+# Jellyfin FFmpeg: install hardware-accelerated build with arch prerequisites.
+# aarch64 additionally needs OpenMAX and font libraries.
+RUN apt-get update \
+    && if uname -m | grep -q x86; then \
+        apt-get install --no-install-recommends -y \
+            locales \
+            openssl ; \
+    elif uname -m | grep -q aarch64; then \
+        apt-get install --no-install-recommends -y \
+            libfontconfig1 \
+            libfreetype6 \
+            libomxil-bellagio-bin \
+            libomxil-bellagio0 \
             libssl-dev \
-            libsvtav1-dev \
-            libtool \
-            libv4l-dev \
-            libva-dev \
-            libvorbis-dev \
-            libvpx-dev \
-            libx264-dev \
-            libx265-dev \
-            make \
-            meson \
-            nasm \
-            ninja-build \
-            pkg-config \
-            tar \
-            wget \
-            xz-utils \
-            yasm \
-    && \
-    echo "**** Install runtime packages ****" \
-        && apt-get install -y \
-            libexpat1 \
-            libglib2.0-0 \
-            libgomp1 \
-            libharfbuzz0b \
-            libmediainfo0v5 \
-            libv4l-0 \
-            libx11-6 \
-            libxcb1 \
-            libxext6 \
-            libxml2 \
-    && \
-    echo "**** Install all available Video Acceleration API packages ****" \
-        # va-driver-all: 
-        #   A meta-package for installing all available Video Acceleration API (VAAPI) drivers. Includes packages like:
-        #       - i965-va-driver
-        #       - intel-media-va-driver
-        #       - mesa-va-drivers
-        #       - libdrm2
-        #       - etc
-        && apt-get install -y \
-            va-driver-all \
-    && \
-    echo "**** Install all available Vulkan API packages ****" \
-        && apt-get install -y \
-            libvulkan1 \
-            mesa-vulkan-drivers \
-            vulkan-tools \
-    && \
-    echo "**** Install arch specific packages for $(uname -m) ****" \
-        && sleep 2 \
-        && \
-        if uname -m | grep -q x86; then \
-            echo "**** Add Intel Graphics repository  ****" \
-                && wget -qO - https://repositories.intel.com/gpu/intel-graphics.key | gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg \
-                && echo "deb [arch=amd64,i386 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy client" | tee /etc/apt/sources.list.d/intel-gpu-jammy.list \
-            && \
-            echo "**** Install Intel Media Drivers  ****" \
-                && apt-get update \
-                # intel-media-va-driver-non-free:
-                #   This is the primary driver for Intel's Video Acceleration API on Linux, which provides support for video encoding and decoding on Intel graphics hardware.
-                # libigdgmm12:
-                #   A part of the Intel Graphics Memory Management Library, which is used for managing graphics memory in an efficient and optimized way on Intel GPUs.
-                # libmfx1:
-                #   This is a library for Intel Media SDK runtime. It is necessary for applications that use Intel Quick Sync Video technology.
-                # libmfxgen1:
-                #   Similar to libmfx1, it's a part of the Intel Media SDK.
-                # libva-drm2 and libva2:
-                #   These are additional libraries needed for VAAPI to interface with the Direct Rendering Manager (DRM) and to provide the main API for VAAPI.
-                # libvpl-dev:
-                #   Development headers required when building the custom FFmpeg inside the container. On Ubuntu 24.04 this dev package is available for x86, but not arm64.
-                # libvpl2:
-                #   This is the successor to the Media SDK and provides a library for video processing.
-                && apt-get install -y \
-                    intel-media-va-driver-non-free \
-                    libigdgmm12 \
-                    libmfx1 \
-                    libmfxgen1 \
-                    libva-drm2 \
-                    libva2 \
-                    libvpl-dev \
-                    libvpl2 \
-            && \
-            echo ; \
-        fi \
-    && \
-    echo "**** Install hardware info tools packages ****" \
-        # hwinfo:
-        #   A hardware identification system that provides detailed information about all the hardware components of a computer.
-        # vainfo:
-        #   This utility displays information about the VAAPI capabilities of your hardware.
-        && apt-get install -y \
-            hwinfo \
-            vainfo \
-    && \
-    echo "**** Section cleanup ****" \
-        && apt-get clean autoclean -y \
-        && apt-get autoremove -y \
-        && rm -rf \
-            /var/lib/apt/lists/* \
-            /var/tmp/* \
-            /tmp/*
+            locales ; \
+    fi \
+    && apt-get install -y jellyfin-ffmpeg${JELLYFIN_FFMPEG_VERSION} \
+    && ln -s /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/local/bin/ffmpeg \
+    && ln -s /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install commonly used command line tools
-ARG JELLYFIN_FFMPEG_VERSION="7"
-ARG BTBN_FFMPEG_RELEASE="autobuild-2026-03-19-13-03"
-ARG BTBN_FFMPEG_VERSION="8.0"
-ARG NODE_MAJOR="22"
+# BtbN FFmpeg: GPL static build for broader codec coverage
 RUN \
-    echo "**** Configure APT ****" \
-        && export DEBIAN_FRONTEND=noninteractive \
-        && . /etc/os-release \
-        && JELLYFIN_CODENAME="${VERSION_CODENAME:-noble}" \
-    && \
-    echo "**** Install FFmpeg for $(uname -m) ****" \
-        && sleep 2 \
-        && apt-get update \
-        && \
-        if uname -m | grep -q x86; then \
-            echo "**** Add Jellyfin repository ****" \
-                && wget -qO - https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor --output /usr/share/keyrings/jellyfin_team.gpg \
-                && echo "deb [arch=$( dpkg --print-architecture ) signed-by=/usr/share/keyrings/jellyfin_team.gpg] https://repo.jellyfin.org/ubuntu ${JELLYFIN_CODENAME} main" | tee /etc/apt/sources.list.d/jellyfin.list \
-            && \
-            echo "**** Install jellyfin-ffmpeg and linked 3rd party libs ****" \
-                && apt-get update \
-                && apt-get install --no-install-recommends --no-install-suggests -y \
-                    openssl \
-                    locales \
-                && apt-get install -y \
-                    jellyfin-ffmpeg${JELLYFIN_FFMPEG_VERSION} \
-                && ln -s /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/local/bin/ffmpeg \
-                && ln -s /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe \
-            && \
-            echo "**** Install BtbN FFmpeg GPL build ****" \
-                && mkdir -p /usr/lib/btbn-ffmpeg \
-                && BTBN_FFMPEG_ASSET_URL="$(curl -fsSL "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/${BTBN_FFMPEG_RELEASE}" | grep -oE "https://[^[:space:]\\\"]*ffmpeg-n${BTBN_FFMPEG_VERSION}[^[:space:]\\\"]*-linux64-gpl-${BTBN_FFMPEG_VERSION}\\.tar\\.xz" | head -n1)" \
-                && test -n "${BTBN_FFMPEG_ASSET_URL}" \
-                && wget -qO /tmp/btbn-ffmpeg.tar.xz "${BTBN_FFMPEG_ASSET_URL}" \
-                && tar -xJf /tmp/btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components=1 \
-                && rm -f /tmp/btbn-ffmpeg.tar.xz \
-            && \
-            echo ; \
-        fi \
-        && \
-        if uname -m | grep -q aarch64; then \
-            echo "**** Add Jellyfin repository ****" \
-                && wget -qO - https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor --output /usr/share/keyrings/jellyfin_team.gpg \
-                && echo "deb [arch=$( dpkg --print-architecture ) signed-by=/usr/share/keyrings/jellyfin_team.gpg] https://repo.jellyfin.org/ubuntu ${JELLYFIN_CODENAME} main" | tee /etc/apt/sources.list.d/jellyfin.list \
-            && \
-            echo "**** Install jellyfin-ffmpeg and linked 3rd party libs ****" \
-                && apt-get update \
-                && apt-get install --no-install-recommends --no-install-suggests -y \
-                    locales \
-                    libssl-dev \
-                    libfontconfig1 \
-                    libfreetype6 \
-                    libomxil-bellagio0 \
-                    libomxil-bellagio-bin \
-                && apt-get install -y \
-                    jellyfin-ffmpeg${JELLYFIN_FFMPEG_VERSION} \
-                && ln -s /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/local/bin/ffmpeg \
-                && ln -s /usr/lib/jellyfin-ffmpeg/ffprobe /usr/local/bin/ffprobe \
-            && \
-            echo "**** Install BtbN FFmpeg GPL build ****" \
-                && mkdir -p /usr/lib/btbn-ffmpeg \
-                && BTBN_FFMPEG_ASSET_URL="$(curl -fsSL "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/${BTBN_FFMPEG_RELEASE}" | grep -oE "https://[^[:space:]\\\"]*ffmpeg-n${BTBN_FFMPEG_VERSION}[^[:space:]\\\"]*-linuxarm64-gpl-${BTBN_FFMPEG_VERSION}\\.tar\\.xz" | head -n1)" \
-                && test -n "${BTBN_FFMPEG_ASSET_URL}" \
-                && wget -qO /tmp/btbn-ffmpeg.tar.xz "${BTBN_FFMPEG_ASSET_URL}" \
-                && tar -xJf /tmp/btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components=1 \
-                && rm -f /tmp/btbn-ffmpeg.tar.xz \
-            && \
-            echo ; \
-        fi \
-    && \
-    echo "**** Install startup script requirements ****" \
-        && apt-get install -y \
-            git \
-            jq \
-            nano \
-            sqlite3 \
-    && \
-    echo "**** Add NodeJS repository ****" \
-        && wget -qO - https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --output /usr/share/keyrings/nodesource.gpg \
-        && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
-    && \
-    echo "**** Install NodeJS for $(uname -m) ****" \
-        && apt-get update \
-        && apt-get install -y \
-            nodejs \
-    && \
-    echo "**** Install exiftool for $(uname -m) ****" \
-        && apt-get install -y \
-            libimage-exiftool-perl \
-    && \
-    echo "**** Section cleanup ****" \
-        && apt-get clean autoclean -y \
-        && apt-get autoremove -y \
-        && rm -rf \
-            /var/lib/apt/lists/* \
-            /var/tmp/* \
-            /tmp/*
+    if uname -m | grep -q x86; then \
+        BTBN_ARCH="linux64" ; \
+    else \
+        BTBN_ARCH="linuxarm64" ; \
+    fi \
+    && BTBN_ASSET_URL="$(curl -fsSL \
+            "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/${BTBN_FFMPEG_RELEASE}" \
+        | grep -oE "https://[^[:space:]\"]*ffmpeg-n${BTBN_FFMPEG_VERSION}[^[:space:]\"]*-${BTBN_ARCH}-gpl-${BTBN_FFMPEG_VERSION}\.tar\.xz" \
+        | head -n1)" \
+    && { \
+        test -n "${BTBN_ASSET_URL}" \
+        || { echo "ERROR: BtbN FFmpeg asset URL not found for release ${BTBN_FFMPEG_RELEASE}"; exit 1; } ; \
+    } \
+    && mkdir -p /usr/lib/btbn-ffmpeg \
+    && wget -qO /tmp/btbn-ffmpeg.tar.xz "${BTBN_ASSET_URL}" \
+    && tar -xJf /tmp/btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components=1 \
+    && rm -f /tmp/btbn-ffmpeg.tar.xz
+
+# Remove packages only needed while assembling the image.
+RUN apt-get update \
+    && apt-get purge -y --auto-remove \
+        gnupg \
+        wget \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 
-# Add pip requirements
-COPY /requirements.txt /tmp/requirements.txt
+# =============================================================================
+# Stage 2 — python-builder
+# Build the Python virtualenv and install Unmanic from source
+# =============================================================================
+FROM ubuntu:24.04 AS python-builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:${PATH}"
+
+# Build dependencies and virtualenv (cached unless this block changes)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        git \
+        nodejs \
+        npm \
+        python3 \
+        python3-dev \
+        python3-setuptools \
+        python3-venv \
+        unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && uv venv /opt/venv --python python3
+
+# Resolve and install locked runtime dependencies before copying the full source
+# tree so this layer stays cached unless dependency metadata changes.
+WORKDIR /build/unmanic
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --active --frozen --no-dev --no-install-project
+
+# Install the project itself from source using the existing lockfile.
+COPY . /build/unmanic/
+RUN uv sync --active --frozen --no-dev \
+    && rm -rf /build/
 
 
-# Install Unmanic python dependencies.
-RUN \
-    echo "**** Configure APT ****" \
-        && export DEBIAN_FRONTEND=noninteractive \
-    && \
-    echo "**** Install Unmanic application dependencies ****" \
-        && sleep 2 \
-        && \
-        echo "**** Update sources ****" \
-            && apt-get update \
-        && \
-        echo "**** Install python ****" \
-            && apt-get install -y --no-install-recommends \
-                grc \
-                gcc \
-                python3 \
-                python3-dev \
-                python3-pip \
-                python3-venv \
-                python3-setuptools \
-                unzip \
-        && \
-        echo "**** Create virtual environment ****" \
-            && python3 -m venv /opt/venv \
-        && \
-        echo "**** Configure pip packages constraint and update python package tools ****" \
-            && mkdir -p /etc/pip \
-            && printf 'setuptools<81\n' > /etc/pip/setuptools-constraint.txt \
-            && printf '[global]\nconstraint=/etc/pip/setuptools-constraint.txt\n' > /etc/pip.conf \
-            && /opt/venv/bin/pip install --no-cache-dir --upgrade \
-                pip \
-                setuptools \
-                uv \
-                wheel \
-        && \
-        echo "**** Install pip packages into virtualenv ****" \
-            && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
-    && \
-    echo "**** Section cleanup ****" \
-        && apt-get clean autoclean -y \
-        && apt-get autoremove -y \
-        && rm -rf \
-            /var/lib/apt/lists/* \
-            /var/tmp/* \
-            /tmp/*
+# =============================================================================
+# Stage 3 — final
+# =============================================================================
+FROM system-base
 
+COPY --from=python-builder /opt/venv /opt/venv
 
-# Prepare default home directory for runtime user
-RUN \
-    echo "**** Prepare /config home directory ****" \
-        && mkdir -p \
-            /app \
-            /config \
-            /tmp/unmanic \
-        && chown 1000:1000 \
-            /app \
-            /config \
-            /tmp/unmanic
-ENV HOME_DIR="/config"
+RUN mkdir -p /app /config /library /tmp/unmanic \
+    && chown 1000:1000 /app /config /tmp/unmanic
 
+ENV \
+    HOME_DIR="/config" \
+    VIRTUAL_ENV=/opt/venv
 
-# Install pre-built Unmanic wheel
-# Must first run `python3 ./setup.py bdist_wheel` on host to build package
-COPY /dist/ /src/
-ENV VIRTUAL_ENV=/opt/venv
-RUN \
-    echo "**** Install Unmanic ****" \
-        && sleep 2 \
-        && \
-        echo "**** Install unmanic from pre-built wheel ****" \
-            && ls -l /src/ \
-            && "${VIRTUAL_ENV:?}"/bin/pip install --no-cache-dir /src/*.whl \
-        && \
-        echo "**** Make default paths for unmanic library ****" \
-            && mkdir -p /library
-
-
-# Add local files
-COPY /docker/root /
+COPY docker/root /
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/usr/bin/unmanic"]
 
-# Unmanic runs on port 8888
 EXPOSE 8888/tcp
