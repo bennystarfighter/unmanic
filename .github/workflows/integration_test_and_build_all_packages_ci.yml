@@ -220,23 +220,23 @@ jobs:
             if [[ -n ${PY_VERSION} ]]; then
               DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:${PY_VERSION},"
             fi
-            if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
+            if [[ ${GITHUB_EVENT_NAME} == push ]]; then
               DOCKER_PUSH="true"
             fi
           elif [[ ${GITHUB_REF} == refs/heads/staging ]]; then
             DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:staging,"
-            if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
+            if [[ ${GITHUB_EVENT_NAME} == push ]]; then
               DOCKER_PUSH="true"
             fi
           elif [[ ${GITHUB_REF} == refs/heads/dev-* ]]; then
             DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:${VERSION_TAG},"
-            if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
+            if [[ ${GITHUB_EVENT_NAME} == push ]]; then
               DOCKER_PUSH="true"
             fi
           elif [[ ${GITHUB_REF} == refs/heads/pr-* ]]; then
             PR_NUMBER=${VERSION_TAG#pr-}
             DOCKER_TAGS="${GHCR_IMAGE}:pr-${PR_NUMBER},"
-            if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
+            if [[ ${GITHUB_EVENT_NAME} == push ]]; then
               DOCKER_PUSH="true"
             fi
           elif [[ ${GITHUB_REF} == refs/tags/* ]]; then
@@ -244,7 +244,7 @@ jobs:
             if [[ ${VERSION} =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}[-\w]*$ ]]; then
               DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:${VERSION},"
               DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:latest,"
-              if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
+              if [[ ${GITHUB_EVENT_NAME} == push ]]; then
                 DOCKER_PUSH="true"
               fi
             fi
