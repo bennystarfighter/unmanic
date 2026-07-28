@@ -210,27 +210,26 @@ jobs:
           BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
           SERVICE_NAME=unmanic
-          DOCKER_HUB_IMAGE=docker.io/josh5/${SERVICE_NAME:?}
           GHCR_IMAGE=ghcr.io/${ORG:?}/${SERVICE_NAME:?}
 
           DOCKER_TAGS=""
           DOCKER_PUSH="false"
 
           if [[ ${GITHUB_REF} == refs/heads/master ]]; then
-            DOCKER_TAGS="${DOCKER_TAGS}${DOCKER_HUB_IMAGE}:latest,${GHCR_IMAGE}:latest,"
+            DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:latest,"
             if [[ -n ${PY_VERSION} ]]; then
-              DOCKER_TAGS="${DOCKER_TAGS}${DOCKER_HUB_IMAGE}:${PY_VERSION},${GHCR_IMAGE}:${PY_VERSION},"
+              DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:${PY_VERSION},"
             fi
             if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
               DOCKER_PUSH="true"
             fi
           elif [[ ${GITHUB_REF} == refs/heads/staging ]]; then
-            DOCKER_TAGS="${DOCKER_TAGS}${DOCKER_HUB_IMAGE}:staging,${GHCR_IMAGE}:staging,"
+            DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:staging,"
             if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
               DOCKER_PUSH="true"
             fi
           elif [[ ${GITHUB_REF} == refs/heads/dev-* ]]; then
-            DOCKER_TAGS="${DOCKER_TAGS}${DOCKER_HUB_IMAGE}:${VERSION_TAG},${GHCR_IMAGE}:${VERSION_TAG},"
+            DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:${VERSION_TAG},"
             if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
               DOCKER_PUSH="true"
             fi
@@ -243,8 +242,8 @@ jobs:
           elif [[ ${GITHUB_REF} == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
             if [[ ${VERSION} =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}[-\w]*$ ]]; then
-              DOCKER_TAGS="${DOCKER_TAGS}${DOCKER_HUB_IMAGE}:${VERSION},${GHCR_IMAGE}:${VERSION},"
-              DOCKER_TAGS="${DOCKER_TAGS}${DOCKER_HUB_IMAGE}:latest,${GHCR_IMAGE}:latest,"
+              DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:${VERSION},"
+              DOCKER_TAGS="${DOCKER_TAGS}${GHCR_IMAGE}:latest,"
               if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REPOSITORY} == Unmanic/unmanic ]]; then
                 DOCKER_PUSH="true"
               fi
@@ -255,9 +254,6 @@ jobs:
             DOCKER_TAGS="${SERVICE_NAME}:pr-${PR_NUMBER},"
           fi
 
-          echo "docker_hub_image:${DOCKER_HUB_IMAGE:?}"
-          echo "docker_hub_image=${DOCKER_HUB_IMAGE:?}" >> $GITHUB_OUTPUT
-
           echo "ghcr_image:${GHCR_IMAGE:?}"
           echo "ghcr_image=${GHCR_IMAGE:?}" >> $GITHUB_OUTPUT
 
@@ -267,8 +263,8 @@ jobs:
           echo "service_name:${SERVICE_NAME:?}"
           echo "service_name=${SERVICE_NAME:?}" >> $GITHUB_OUTPUT
 
-          echo "docker_image:${DOCKER_HUB_IMAGE:?}"
-          echo "docker_image=${DOCKER_HUB_IMAGE:?}" >> $GITHUB_OUTPUT
+          echo "docker_image:${GHCR_IMAGE:?}"
+          echo "docker_image=${GHCR_IMAGE:?}" >> $GITHUB_OUTPUT
 
           echo "docker_tags:$(echo ${DOCKER_TAGS} | sed 's/,$//')"
           echo "docker_tags=$(echo ${DOCKER_TAGS} | sed 's/,$//')" >> $GITHUB_OUTPUT
@@ -289,14 +285,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # ---
-      - name: Log into Docker Hub registry
-        if: success() && steps.prepare.outputs.docker_push == 'true' && contains(steps.prepare.outputs.docker_tags, 'docker.io/')
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 #v3.3.0
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
 
       # ---
       - name: Docker meta
@@ -330,36 +318,3 @@ jobs:
             ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ steps.prepare.outputs.service_name }}-main
           cache-to: type=gha,scope=${{ steps.prepare.outputs.service_name }}-main,mode=max
-
-  build_pypi:
-    name: Publish package to PyPI
-    needs: py_build
-    runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
-
-    steps:
-      # Fetch shallow git repository
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Fetch all artifacts
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts/
-
-      # Restore python package distribution data
-      - name: Restore python package distribution data
-        id: py_build_data
-        run: |
-          mkdir -p ./dist
-          find ./artifacts/ -type f -name "*.whl" -exec cp -n {} ./dist/ \;
-          find ./artifacts/ -type f -name "*.tar.gz" -exec cp -n {} ./dist/ \;
-          ls -l ./dist/
-
-      # Push the artifacts to PyPI repo
-      - name: Publish distribution package to PyPI
-        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
-        uses: pypa/gh-action-pypi-publish@master
-        with:
-          password: ${{ secrets.PYPI_TOKEN }}
