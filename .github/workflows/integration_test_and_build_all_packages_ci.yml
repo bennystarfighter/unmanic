@@ -132,7 +132,7 @@ jobs:
           uv run python ./setup.py  --quiet fullversion
           REPO_URL="https://github.com/${GITHUB_REPOSITORY}/raw/${GITHUB_REF#refs/heads/}"
           sed -i "s|(./docs/|(${REPO_URL:?}/docs/|g" README.md
-          uv build --no-sources
+          uv build --wheel --no-sources
 
       # Read the python package distribution data (save version to file)
       - name: Read python package distribution data
