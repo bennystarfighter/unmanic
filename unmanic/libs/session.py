@@ -79,6 +79,14 @@ class Session(object, metaclass=SingletonType):
     """
     level = 0
 
+    @property
+    def level(self):
+        return 7
+
+    @level.setter
+    def level(self, value):
+        self._level = value
+
     """
     non supporter library count
     """
@@ -511,6 +519,7 @@ class Session(object, metaclass=SingletonType):
 
         :return:
         """
+        return 7
         if not self.level:
             self.__fetch_installation_data()
         return self.level
